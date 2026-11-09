@@ -1066,14 +1066,9 @@ async function upsertGroupMatchesMessage(client, tid, round) {
 
   const key = groupMatchesRefKey(tid, t.season, round);
   const ref = db.getConfig(key);
-  if (ref && Number(ref.season) === Number(t.season)) {
-    const existing = await getReferencedMessage(client, ref);
-    if (existing) {
-      const edited = await existing.edit(addRoleMention(payload, t.tag_on ? t.registration_role_id : null))
-        .catch(() => null);
-      if (edited) return { message: edited, updated: true };
-    }
-  }
+  const previousMessage = ref && Number(ref.season) === Number(t.season)
+    ? await getReferencedMessage(client, ref)
+    : null;
 
   const posted = await postWithPing(
     client,
@@ -1082,13 +1077,39 @@ async function upsertGroupMatchesMessage(client, tid, round) {
     payload,
   );
   if (!posted) return { error: '❌ Could not post Group matches.' };
+
+  let previousDeleteFailed = false;
+  if (previousMessage) {
+    try {
+      await previousMessage.delete();
+    } catch (error) {
+      previousDeleteFailed = true;
+      console.error(`[GroupMatches] Could not delete replaced post for tournament ${tid}, Matchday ${round}:`, error);
+    }
+  }
+
   db.setConfig(key, {
     channelId,
     messageId: posted.id,
     season: t.season,
     round,
   });
-  return { message: posted, updated: false };
+  return {
+    message: posted,
+    replaced: Boolean(previousMessage) && !previousDeleteFailed,
+    previousDeleteFailed,
+  };
+}
+
+function groupMatchesPublishNotice(result, round, channelId) {
+  const jumpLink = result.message?.url ? ` <${result.message.url}>` : '';
+  if (result.previousDeleteFailed) {
+    return `⚠️ Matchday ${round} Group matches were posted to <#${channelId}>, but the previous post could not be deleted.${jumpLink}`;
+  }
+  if (result.replaced) {
+    return `✅ New Matchday ${round} Group matches post sent to <#${channelId}>; previous post replaced.${jumpLink}`;
+  }
+  return `✅ Matchday ${round} Group matches post sent to <#${channelId}>.${jumpLink}`;
 }
 
 // Small component v2 ephemeral reply that auto-deletes after 5 s (publish panel feedback)
@@ -3272,9 +3293,7 @@ async function handleBotolaInteraction(interaction) {
       if (result.error) return p3SmallReply(interaction, result.error);
       return p3SmallReply(
         interaction,
-        result.updated
-          ? `✅ Matchday ${round_s} Group matches post updated in <#${ch.results}>.`
-          : `✅ Matchday ${round_s} Group matches posted to <#${ch.results}>.`,
+        groupMatchesPublishNotice(result, round_s, ch.results),
         buildPanel3(getT(tid)),
       );
     }
@@ -3289,9 +3308,7 @@ async function handleBotolaInteraction(interaction) {
       if (result.error) return p3SmallReply(interaction, result.error);
       return p3SmallReply(
         interaction,
-        result.updated
-          ? `✅ Matchday ${round} Group matches post updated in <#${ch.results}>.`
-          : `✅ Matchday ${round} Group matches posted to <#${ch.results}>.`,
+        groupMatchesPublishNotice(result, round, ch.results),
         buildPanel3(getT(tid)),
       );
     }
