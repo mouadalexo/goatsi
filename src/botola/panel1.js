@@ -74,7 +74,6 @@ function buildPanel1(tournament, options = {}) {
     const allRds    = [...new Set(groupMatches.map(m => m.round))].sort((a, b) => a - b);
     const curRound  = db.getConfig('group_round_' + tid) || allRds[0] || 1;
     const lastRound = allRds[allRds.length - 1] || 1;
-    const pendingGroup = groupMatches.filter(m => m.status !== 'played').length;
     const pendingBeforeCurrentRound = groupMatches.filter(
       m => m.round < curRound && m.status !== 'played'
     ).length;
@@ -87,11 +86,11 @@ function buildPanel1(tournament, options = {}) {
     const firstKONum  = qualifiers / 2; // number of matches = round identifier
     const firstKOLabel = KO_LABELS[firstKONum] || 'Quarter-Finals';
 
-    // Group Matchdays may be skipped, but knockout requires complete group results.
+    // Button label — never disabled
     const advLabel = isLastRound ? `Advance to ${firstKOLabel}` : 'Next Match Day';
 
     // Per-round match counts for status text
-    const curPending = groupMatches.filter(m => m.round === curRound && m.status !== 'played').length;
+    const curPending = groupMatches.filter(m => m.round === curRound && m.status === 'pending').length;
     const curPlayed  = groupMatches.filter(m => m.round === curRound && m.status === 'played').length;
 
     inner.push(txt(
@@ -99,35 +98,23 @@ function buildPanel1(tournament, options = {}) {
       `> **Match Day ${curRound}:** ${curPlayed} played  /  ${curPending} pending`
     ));
     inner.push(SEP);
-    if (isLastRound && pendingGroup > 0) {
-      inner.push(txt(
-        `⛔ **${pendingGroup} group match${pendingGroup !== 1 ? 'es' : ''} still pending.** ` +
-        `Complete all group results before advancing to ${firstKOLabel}.`
-      ));
-    } else if (!isLastRound && pendingGroup > 0) {
-      inner.push(txt(
-        `⚠️ **${pendingGroup} group match${pendingGroup !== 1 ? 'es' : ''} still pending.** ` +
-        `You may continue to Match Day ${curRound + 1}; these matches will remain pending.`
-      ));
-    } else if (curPending === 0 && curPlayed > 0) {
-      inner.push(txt(`✅ **Match Day ${curRound} complete!** Click **${advLabel}** to continue.`));
-    } else {
-      inner.push(txt(
-        `⏳ **Match Day ${curRound}** — **${curPending}** result${curPending !== 1 ? 's' : ''} remaining`
-      ));
-    }
+    inner.push(txt(
+      curPending === 0 && curPlayed > 0
+        ? `\u2705 **Match Day ${curRound} complete!** Click **${advLabel}** to continue.`
+        : `\u23f3 **Match Day ${curRound}** \u2014 **${curPending}** result${curPending !== 1 ? 's' : ''} remaining`
+    ));
     if (pendingBeforeCurrentRound > 0) {
       inner.push(SEP);
       inner.push(txt(
-        isLastRound
-          ? `⚠️ **${pendingBeforeCurrentRound} match${pendingBeforeCurrentRound !== 1 ? 'es' : ''} remain pending from earlier Matchdays; all group results are required before knockout.**`
-          : `⚠️ **${pendingBeforeCurrentRound} match${pendingBeforeCurrentRound !== 1 ? 'es' : ''} remain pending from earlier Matchdays.**`
+        pendingBeforeCurrentRound === 1
+          ? `\u26a0\ufe0f **1 group-stage match remains pending from an earlier matchday.**`
+          : `\u26a0\ufe0f **${pendingBeforeCurrentRound} group-stage matches remain pending from earlier matchdays.**`
       ));
     }
     inner.push(SEP);
     inner.push({ type: 1, components: [
       btn('Add Result',     `p1_${tid}_addresult`, 1, false),
-      btn(advLabel,         `p1_${tid}_advance`,   3, isLastRound && pendingGroup > 0),
+      btn(advLabel,         `p1_${tid}_advance`,   3, false),
       btn('End Tournament', `p1_${tid}_end`,       4, false),
     ]});
 
